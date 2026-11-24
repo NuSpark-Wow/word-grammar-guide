@@ -823,10 +823,21 @@ function nextTurn(){ if(SCORE.together){ SCORE.turn=1-SCORE.turn; renderScore();
 function turnLine(){ return SCORE.together?'<div class="turnNote">'+esc(pName(SCORE.turn))+'\'s turn</div>':''; }
 
 /* ====================== NAVIGATION ====================== */
+/* Bring something into view. Inside the website embed, ask the page to scroll; on its own, scroll this window. */
+var goTimer=null;
+function goTo(el, pad){
+  clearTimeout(goTimer);
+  goTimer=setTimeout(function(){
+    var y = el ? Math.max(0, el.getBoundingClientRect().top + (window.pageYOffset||0) - (pad==null?12:pad)) : 0;
+    var embedded=false; try{ embedded = window.parent && window.parent!==window; }catch(e){ embedded=true; }
+    if(embedded){ try{ parent.postMessage({type:'word-grammar-guide-scroll', top:y},'*'); }catch(e){} }
+    try{ window.scrollTo({top:y,behavior:'smooth'}); }catch(e){ window.scrollTo(0,y); }
+  }, 160);
+}
 function show(which){
   ['guideHome','toolHome','view'].forEach(function(id){ $(id).classList.toggle('hidden', id!==which); });
-  try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(e){ window.scrollTo(0,0); }
   postHeight();
+  goTo(which==='view' ? $('view') : null);
 }
 function openGuide(){
   stopAll(true); S.tool=null; S.sec=null;
@@ -916,7 +927,7 @@ $('cPause').onclick=function(){
   setControls();
 };
 $('cRestart').onclick=function(){ if(S.last){ stopAll(true); S.last(); } };
-$('cClose').onclick=function(){ stopAll(true); S.sec=null; show('toolHome'); say(T().greeting); };
+$('cClose').onclick=function(){ stopAll(true); S.sec=null; show('toolHome'); goTo($('shelf').parentElement, 12); say(T().greeting); };
 $('cHome').onclick=function(){
   stopAll(true);
   S=freshState(); SCORE={together:false, turn:0, p:[0,0], rounds:0, right:0, streak:0};
@@ -951,11 +962,13 @@ function runReport(section, opts){
   S.last=function(){ runReport(section, opts); };
   S.busy=true; setControls();
   loading(out, LOADING[section]||'Mr. Paul is thinking it over…');
+  goTo(out, 80);
   api({action:'report', section:section, input:opts.input||'', direction:opts.direction, surprise:!!opts.surprise, seen:seenList(section)}).then(function(r){
     S.busy=false; S.ctl=null;
     var L=out.querySelector('.loading'); if(L) L.remove();
     addSeen(section, r.title);
     renderReport(out, r, section, opts);
+    goTo(out, 12);
   }).catch(function(e){ fail(out,e); });
 }
 function renderReport(out, r, section, opts){
@@ -1010,7 +1023,7 @@ function sendFollowup(){
   var L=loading(th,'Mr. Paul is thinking…');
   api({action:'followup', tool:S.tool, question:q, context:S.ctx, history:S.thread.slice()}).then(function(r){
     L.remove(); S.busy=false; S.ctl=null;
-    var a=document.createElement('div'); a.className='msg a'; a.textContent=r.answer; th.appendChild(a);
+    var a=document.createElement('div'); a.className='msg a'; a.textContent=r.answer; th.appendChild(a); goTo(a, 90);
     S.thread.push({role:'user',content:q},{role:'assistant',content:r.answer});
     $('fuSend').disabled=false; setControls(); postHeight();
   }).catch(function(e){ if($('fuSend')) $('fuSend').disabled=false; fail(th,e); });
@@ -1025,18 +1038,20 @@ function runRound(kind){
   S.last=function(){ runRound(kind); };
   S.busy=true; setControls();
   loading(out, ROUND_LOADING[kind]||'Mr. Paul is setting up a round…');
+  goTo(out, 80);
   api({action:'round', kind:kind, decade:S.decade, seen:seenList('round-'+kind)}).then(function(r){
     S.busy=false; S.ctl=null;
     var L=out.querySelector('.loading'); if(L) L.remove();
     S.round=r; addSeen('round-'+kind, r.word||r.term||r.prompt);
     if(r.mc) drawMC(out,r); else if(kind==='thennow') drawThenNow(out,r); else if(kind==='slang') drawSlang(out,r); else drawOpposite(out,r);
+    goTo(out, 12);
     setControls(); postHeight();
   }).catch(function(e){ fail(out,e); });
 }
 function nextBtns(){ return '<div class="btnRow"><button class="btn acc" id="nextRound">Next Round'+(SCORE.together?' ('+esc(pName(1-SCORE.turn))+')':'')+'</button><button class="btn ghost" id="backShelf">Back to the sections</button></div>'; }
 function wireNext(kind){
   $('nextRound').onclick=function(){ nextTurn(); runRound(kind); };
-  $('backShelf').onclick=function(){ nextTurn(); stopAll(true); S.sec=null; show('toolHome'); };
+  $('backShelf').onclick=function(){ nextTurn(); stopAll(true); S.sec=null; show('toolHome'); goTo($('shelf').parentElement, 12); };
 }
 function optList(opts){ return '<div class="opts" id="opts">'+opts.map(function(o,i){ return '<button class="opt" data-i="'+i+'"><span class="lt">'+LT[i]+'</span><span>'+esc(o)+'</span></button>'; }).join('')+'</div>'; }
 function markOpts(answer, pick){ [].forEach.call($('opts').children,function(c,i){ c.disabled=true; if(i===answer) c.classList.add('right'); else if(i===pick) c.classList.add('wrong'); }); }
@@ -1053,7 +1068,7 @@ function drawMC(out,r){
     $('res').innerHTML='<div class="result"><h3>'+(ok?'✅ You got it!':'❌ Not quite!')+'</h3>'+
       (r.label?'<p><span class="badge '+badgeClass(r.label)+'">'+esc(r.label)+'</span> '+esc(notes[r.label]||'')+'</p>':'')+
       '<p>'+esc(r.explain)+'</p>'+(r.extra?'<p><b>'+esc(r.extra)+'</b></p>':'')+'</div>'+nextBtns();
-    wireNext(r.kind);
+    wireNext(r.kind); goTo($('res'), 120);
     S.ctx=T().name+' round ('+r.kind+'). Shown: '+r.prompt+'\nQuestion: '+r.question+'\nOptions: '+r.options.join(' | ')+'\nCorrect: '+r.options[r.answer]+'\nVisitor picked: '+r.options[pick]+'\n'+r.explain+'\n'+r.extra;
     addFollowup(out);
     say(ok?(S.tool==='grammar'?'Nailed it! You\'re a grammar pro.':'Sharp thinking!'):'Tricky one, right? Read the explanation.', true);
@@ -1068,7 +1083,7 @@ function drawThenNow(out,r){
     var pick=+b.getAttribute('data-i'), ok=pick===r.answer;
     markOpts(r.answer,pick); scoreRound(ok);
     $('res').innerHTML='<div class="result"><h3>'+(ok?'✅ You got it!':'❌ Not quite!')+'</h3><p><b>Then:</b> '+esc(r.then)+'</p><p><b>Now:</b> '+esc(r.now)+'</p><p>'+esc(r.story)+'</p><p><span class="badge '+badgeClass(r.badge)+'">'+esc(r.badge)+'</span></p></div>'+nextBtns();
-    wireNext('thennow');
+    wireNext('thennow'); goTo($('res'), 120);
     S.ctx='Then vs. Now round. Word: '+r.word+'. Then: '+r.then+'. Now: '+r.now+'. '+r.story;
     addFollowup(out); say(ok?'Wow, you know your word history!':'Surprising, right? Words drift over time.', true); postHeight();
   };
@@ -1082,7 +1097,7 @@ function drawSlang(out,r){
     var b=e.target.closest('.dec'); if(!b||b.disabled) return;
     decOk=b.getAttribute('data-d')===r.decade;
     [].forEach.call($('decs').children,function(c){ c.disabled=true; if(c.getAttribute('data-d')===r.decade) c.classList.add('right'); else if(c===b) c.classList.add('wrong'); });
-    $('step2').classList.remove('hidden'); postHeight();
+    $('step2').classList.remove('hidden'); postHeight(); goTo($('step2'), 60);
     say(decOk?'Right decade! Now, what did it mean?':'It was the '+r.decade+'. Now guess what it meant!');
   };
   $('opts').onclick=function(e){
@@ -1091,7 +1106,7 @@ function drawSlang(out,r){
     markOpts(r.answer,pick); scoreRound(both);
     $('res').innerHTML='<div class="result"><h3>'+(both?'✅ Both right!':ok?'Half right: you got the meaning':decOk?'Half right: you got the decade':'❌ Not this time!')+'</h3>'+
       '<p><b>"'+esc(r.term)+'"</b> was big in the '+esc(r.decade)+'.</p><p>'+esc(r.explain)+'</p>'+(r.example?'<p><i>"'+esc(r.example)+'"</i></p>':'')+'</div>'+nextBtns();
-    wireNext('slang');
+    wireNext('slang'); goTo($('res'), 120);
     S.ctx='Slang round. Term: '+r.term+' ('+r.decade+'). '+r.explain+' Example: '+r.example;
     addFollowup(out); say(both?'Far out! You nailed it.':'Now you\'ve got one more for your slang collection!', true); postHeight();
   };
@@ -1108,7 +1123,7 @@ function drawOpposite(out,r){
     [].forEach.call($('abBtns').children,function(c){ c.disabled=true; });
     scoreRound(ok);
     $('res').innerHTML='<div class="result"><h3>'+(ok?'✅ Correct!':'❌ Tricky one!')+'</h3><p>The sentence uses <b>Meaning '+r.answer.toUpperCase()+'</b>.</p><p>'+esc(r.explain)+'</p><p><b>A:</b> <i>'+esc(r.exampleA)+'</i></p><p><b>B:</b> <i>'+esc(r.exampleB)+'</i></p></div>'+nextBtns();
-    wireNext('opposite');
+    wireNext('opposite'); goTo($('res'), 120);
     S.ctx='Opposites round. Word: '+r.word+'. A: '+r.a+'. B: '+r.b+'. Sentence: '+r.sentence+'. Answer: '+r.answer+'. '+r.explain;
     addFollowup(out); say(ok?'Sharp eyes! These words love to play tricks.':'See? That word really does argue with itself.', true); postHeight();
   };
